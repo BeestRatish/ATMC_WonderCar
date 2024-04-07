@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 # coding=utf8
-
 import sys
+sys.path.append('/home/pi/TurboPi/')
 import cv2
 import time
 import math
 import signal
+import Camera
+import argparse
 import threading
 import numpy as np
 import yaml_handle
@@ -13,10 +15,13 @@ import HiwonderSDK.PID as PID
 import HiwonderSDK.Misc as Misc
 import HiwonderSDK.Board as Board
 import HiwonderSDK.mecanum as mecanum
-import Camera
 
-# Add TurboPi library to the Python path
-sys.path.append('/home/pi/TurboPi/')
+# 视觉巡线 Line Following
+
+if sys.version_info.major == 2:
+    print('Please run this program with python3!')
+    sys.exit(0)
+
 
 # Constants and global variables
 servo1 = 1500  # Initial servo positions
