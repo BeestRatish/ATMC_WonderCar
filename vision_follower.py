@@ -16,12 +16,10 @@ import HiwonderSDK.PID as PID
 import HiwonderSDK.Misc as Misc
 import HiwonderSDK.Board as Board
 import HiwonderSDK.mecanum as mecanum
+import HiwonderSDK.FourInfrared as infrared  # Import the line detection module
 
-# Visual Line Following
-
-if sys.version_info.major == 2:
-    print('Please run this program with python3!')
-    sys.exit(0)
+# Initialize line detector
+line = infrared.FourInfrared()
 
 servo1 = 1500
 servo2 = 1500
@@ -53,14 +51,12 @@ def load_config():
     servo_data = yaml_handle.get_yaml_data(yaml_handle.servo_file_path)
 
 
-# Initial Position
 def initMove():
     car_stop()
     Board.setPWMServoPulse(1, servo1, 1000)
     Board.setPWMServoPulse(2, servo2, 1000)
 
 
-# Reset Variables
 def reset():
     global line_centerx
     global target_color
@@ -72,7 +68,6 @@ def reset():
     servo2 = servo_data['servo2']
 
 
-# APP Initialization
 def init():
     print("VisualPatrol Init")
     load_config()
@@ -80,7 +75,6 @@ def init():
     initMove()
 
 
-# App starts calling program
 def start():
     global __isRunning
     reset()
@@ -88,7 +82,6 @@ def start():
     print("VisualPatrol Start")
 
 
-# App stops calling program
 def stop():
     global __isRunning
     __isRunning = False
@@ -96,7 +89,6 @@ def stop():
     print("VisualPatrol Stop")
 
 
-# Exit the game
 def exit():
     global __isRunning
     __isRunning = False
@@ -104,7 +96,6 @@ def exit():
     print("VisualPatrol Exit")
 
 
-# Set target color
 def setTargetColor(color):
     global target_color
 
@@ -120,12 +111,10 @@ def setBuzzer(timer):
     Board.setBuzzer(0)
 
 
-# Turn off motors
 def car_stop():
-    car.set_velocity(0, 90, 0)  # Turn off all motors
+    car.set_velocity(0, 90, 0)  # Stop all motors
 
 
-# Find the maximum contour
 def getAreaMaxContour(contours):
     contour_area_temp = 0
     contour_area_max = 0
@@ -141,7 +130,6 @@ def getAreaMaxContour(contours):
     return area_max_contour, contour_area_max
 
 
-# Movement Processing
 car_en = False
 
 
@@ -159,19 +147,21 @@ def move():
 
                 car.set_velocity(50, 90, angle)
                 car_en = True
+            else:
+                car_stop()
+                car_en = False
         else:
             if car_en:
-                car_en = False
                 car_stop()
+                car_en = False
             time.sleep(0.01)
 
 
-# Run child thread
 th = threading.Thread(target=move)
 th.setDaemon(True)
 th.start()
 
-roi = [  # [ROI, weight]
+roi = [
     (240, 280, 0, 640, 0.1),
     (340, 380, 0, 640, 0.3),
     (430, 460, 0, 640, 0.6)
@@ -184,10 +174,8 @@ roi_h3 = roi[2][0] - roi[1][0]
 roi_h_list = [roi_h1, roi_h2, roi_h3]
 
 
-# Image processing
 def run(img):
     global line_centerx
-    global target_color
 
     img_copy = img.copy()
     img_h, img_w = img.shape[:2]
@@ -203,55 +191,48 @@ def run(img):
     n = 0
 
     for r in roi:
-        roi_h = roi_h_list[n]
-        n += 1
-        blobs = frame_gb[r[0]:r[1], r[2]:r[3]]
-        frame_lab = cv2.cvtColor(blobs, cv2.COLOR_BGR2LAB)
-        area_max = 0
-        areaMaxContour = 0
-        for i in target_color:
-            if i in lab_data:
-                detect_color = i
-                frame_mask = cv2.inRange(frame_lab,
-                                         (lab_data[i]['min'][0],
-                                          lab_data[i]['min'][1],
-                                          lab_data[i]['min'][2]),
-                                         (lab_data[i]['max'][0],
-                                          lab_data[i]['max'][1],
-                                          lab_data[i]['max'][2]))
-                eroded = cv2.erode(frame_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
-                dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+        h1, h2, w1, w2, k = r
+        frame_roi = frame_gb[h1:h2, w1:w2]
+        frame_lab = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2LAB)
+        frame_mask = cv2.inRange(frame_lab, lab_data[target_color]['min'], lab_data[target_color]['max'])
+        opened = cv2.morphologyEx(frame_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
 
-        cnts = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]
-        cnt_large, area = getAreaMaxContour(cnts)
-        if cnt_large is not None:
-            rect = cv2.minAreaRect(cnt_large)
+        contours = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[-2]
+        areaMaxContour, area_max = getAreaMaxContour(contours)
+
+        if areaMaxContour is not None:
+            rect = cv2.minAreaRect(areaMaxContour)
             box = np.int0(cv2.boxPoints(rect))
-            for i in range(4):
-                box[i, 1] = box[i, 1] + (n - 1) * roi_h + roi[0][0]
-                box[i, 1] = int(Misc.map(box[i, 1], 0, size[1], 0, img_h))
-            for i in range(4):
-                box[i, 0] = int(Misc.map(box[i, 0], 0, size[0], 0, img_w))
 
-            cv2.drawContours(img, [box], -1, (0, 0, 255, 255), 2)
+            cv2.drawContours(img, [box], -1, range_rgb[target_color], 2)
 
-            pt1_x, pt1_y = box[0, 0], box[0, 1]
-            pt3_x, pt3_y = box[2, 0], box[2, 1]
-            center_x, center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2
-            cv2.circle(img, (int(center_x), int(center_y)), 5, (0, 0, 255), -1)
-            center_.append([center_x, center_y])
-            centroid_x_sum += center_x * r[4]
-            weight_sum += r[4]
-    if weight_sum != 0:
-        cv2.circle(img, (line_centerx, int(center_y)), 10, (0, 255, 255), -1)
-        line_centerx = int(centroid_x_sum / weight_sum)
-    else:
-        line_centerx = -1
+            M = cv2.moments(areaMaxContour)
+            c_x, c_y = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])
+
+            cv2.circle(img, (c_x, c_y), 3, (0, 255, 0), 2)
+            cv2.putText(img, "centroid", (c_x - 25, c_y - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            centroid_x_sum += c_x * k
+            weight_sum += k
+
+            center_.append((c_x, c_y))
+
+            n += 1
+
+    if n == 0:
+        return img
+
+    line_centerx = int(centroid_x_sum / weight_sum)
+
+    cv2.circle(img, (line_centerx, img_centerx), 5, (255, 0, 0), -1)
+    cv2.putText(img, "LineCenterX: " + str(line_centerx), (10, img.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
+                (0, 255, 255), 2)
+
     return img
 
 
-# Processing before exit
-def manual_stop(signum, frame):
+def manualcar_stop(signum, frame):
     global __isRunning
 
     print('Closing...')
@@ -260,24 +241,37 @@ def manual_stop(signum, frame):
 
 
 if __name__ == '__main__':
-    init()
-    start()
-    __isRunning = True
-    target_color = ('black',)
-    camera = Camera.Camera()
-    camera.camera_open(correction=True)
-    signal.signal(signal.SIGINT, manual_stop)
-    while __isRunning:
-        img = camera.frame
-        if img is not None:
-            frame = img.copy()
-            Frame = run(frame)
-            frame_resize = cv2.resize(Frame, (320, 240))
-            cv2.imshow('frame', frame_resize)
-            key = cv2.waitKey(1)
-            if key == 27:
-                break
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--color", type=str, help="Target color (red, green, blue)")
+    args = parser.parse_args()
+
+    if args.color:
+        color = args.color.lower()
+        if color in range_rgb:
+            init()
+            setTargetColor(color)
+            start()
+
+            camera = Camera.Camera()
+            camera.camera_open(correction=True)
+            signal.signal(signal.SIGINT, manualcar_stop)
+
+            while __isRunning:
+                img = camera.frame
+                if img is not None:
+                    frame = img.copy()
+                    Frame = run(frame)
+                    frame_resize = cv2.resize(Frame, (320, 240))
+                    cv2.imshow('frame', frame_resize)
+                    key = cv2.waitKey(1)
+                    if key == 27:
+                        break
+                else:
+                    time.sleep(0.01)
+
+            camera.camera_close()
+            cv2.destroyAllWindows()
         else:
-            time.sleep(0.01)
-    camera.camera_close()
-    cv2.destroyAllWindows()
+            print("Invalid color argument! Use 'red', 'green', or 'blue'.")
+    else:
+        print("Please provide a color argument! Use --color <color> (e.g., --color red).")
