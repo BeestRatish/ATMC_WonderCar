@@ -1,6 +1,7 @@
 import cv2
 
 # Load the pedestrian classifier
+
 classifier_file = "pedestrian_classifier.xml"
 pedestrian_cascade = cv2.CascadeClassifier(classifier_file)
 
