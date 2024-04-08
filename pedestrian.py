@@ -13,6 +13,10 @@ def ai_vision(image):
 # Open a video stream (replace 0 with the camera index if using a webcam)
 cap = cv2.VideoCapture(0)
 
+# Set the camera resolution to 650x480
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 650)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
 while True:
     # Read a frame from the video stream
     ret, frame = cap.read()
