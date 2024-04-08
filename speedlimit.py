@@ -1,6 +1,19 @@
 import cv2
 
-# Define the file path for the Haar Cascade classifier
+# Set the camera resolution to 640x480
+resolution = (640, 480)
+
+# Initialize the camera capture object with the specified resolution
+video_capture = cv2.VideoCapture(0)
+video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+
+# Check if the camera is opened successfully
+if not video_capture.isOpened():
+    print("Error: Failed to open the camera.")
+    exit()
+
+# Define the file path for the Haar Cascade classifier for stop signs
 cascade_path = 'stopsign_classifier.xml'  # Replace 'stopsign_classifier.xml' with the actual file path
 # Define the real-world dimensions of the stop sign (in meters)
 stop_sign_width = 0.45  # Width of the stop sign in meters (e.g., 45 cm)
@@ -12,14 +25,9 @@ actual_distance = 1.5  # Actual distance from the camera to the stop sign in met
 # Load the pre-trained Haar Cascade classifier for stop signs
 stop_cascade = cv2.CascadeClassifier(cascade_path)
 
-# Set the camera resolution to 640x480
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
 while True:
     # Capture frame-by-frame
-    ret, frame = cap.read()
+    ret, frame = video_capture.read()
     if not ret:
         break
 
@@ -52,5 +60,5 @@ while True:
         break
 
 # Release the camera and close all windows
-cap.release()
+video_capture.release()
 cv2.destroyAllWindows()
