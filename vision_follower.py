@@ -16,10 +16,35 @@ import HiwonderSDK.PID as PID
 import HiwonderSDK.Misc as Misc
 import HiwonderSDK.Board as Board
 import HiwonderSDK.mecanum as mecanum
-import HiwonderSDK.FourInfrared as infrared  # Import the line detection module
+import HiwonderSDK.Sonar as Sonar
 
-# Initialize line detector
-line = infrared.FourInfrared()
+
+#Initialize line detector
+sonar = Sonar.Sonar()
+
+
+# 视觉巡线
+# Load the Haar cascade classifier for stop signs
+stop_sign_cascade = cv2.CascadeClassifier('stopsign_classifier.xml')
+
+def detect_stop_signs(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    stop_signs = stop_sign_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
+    
+    for (x, y, w, h) in stop_signs:
+        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        # Calculate distance here and return (x, y, w, h, distance)
+        # Placeholder for distance calculation
+        distance = 10  # Placeholder distance value
+        
+        return x, y, w, h, distance
+
+    return None
+
+if sys.version_info.major == 2:
+    print('Please run this program with python3!')
+    sys.exit(0)
+
 
 servo1 = 1500
 servo2 = 1500
@@ -40,62 +65,63 @@ range_rgb = {
     'white': (255, 255, 255),
 }
 
+
 lab_data = None
 servo_data = None
-
-
 def load_config():
     global lab_data, servo_data
-
+    
     lab_data = yaml_handle.get_yaml_data(yaml_handle.lab_file_path)
     servo_data = yaml_handle.get_yaml_data(yaml_handle.servo_file_path)
 
-
+# 初始位置
 def initMove():
     car_stop()
     Board.setPWMServoPulse(1, servo1, 1000)
     Board.setPWMServoPulse(2, servo2, 1000)
+   
 
-
+    
+# 变量重置
 def reset():
     global line_centerx
     global target_color
     global servo1, servo2
-
+    
     line_centerx = -1
     target_color = ()
-    servo1 = servo_data['servo1'] + 350
+    servo1 = servo_data['servo1']+350
     servo2 = servo_data['servo2']
-
-
+    
+# app初始化调用
 def init():
     print("VisualPatrol Init")
     load_config()
     reset()
     initMove()
 
-
+# app开始玩法调用
 def start():
     global __isRunning
     reset()
     __isRunning = True
     print("VisualPatrol Start")
 
-
+# app停止玩法调用
 def stop():
     global __isRunning
     __isRunning = False
     car_stop()
     print("VisualPatrol Stop")
 
-
+# app退出玩法调用
 def exit():
     global __isRunning
     __isRunning = False
     car_stop()
     print("VisualPatrol Exit")
-
-
+    
+# 设置检测颜色
 def setTargetColor(color):
     global target_color
 
@@ -103,69 +129,89 @@ def setTargetColor(color):
     target_color = color
     return (True, ())
 
-
 def setBuzzer(timer):
     Board.setBuzzer(0)
     Board.setBuzzer(1)
     time.sleep(timer)
     Board.setBuzzer(0)
 
-
+# 关闭电机
 def car_stop():
-    car.set_velocity(0, 90, 0)  # Stop all motors
-
-
+    car.set_velocity(0,90,0)  # 关闭所有电机
+    
+# 找出面积最大的轮廓
+# 参数为要比较的轮廓的列表
 def getAreaMaxContour(contours):
     contour_area_temp = 0
     contour_area_max = 0
     area_max_contour = None
 
-    for c in contours:
-        contour_area_temp = math.fabs(cv2.contourArea(c))
+    for c in contours:  # 历遍所有轮廓
+        contour_area_temp = math.fabs(cv2.contourArea(c))  # 计算轮廓面积
         if contour_area_temp > contour_area_max:
             contour_area_max = contour_area_temp
-            if contour_area_temp >= 5:
+            if contour_area_temp >= 5:  # 只有在面积大于300时，最大面积的轮廓才是有效的，以过滤干扰
                 area_max_contour = c
 
-    return area_max_contour, contour_area_max
+    return area_max_contour, contour_area_max  # 返回最大的轮廓
 
-
+# 机器人移动逻辑处理
 car_en = False
 
-
-def move():
-    global line_centerx, car_en
+def check_obstacle():
+    global __isRunning, car_en, obstacle_detected
 
     while True:
         if __isRunning:
+            distance = sonar.get_distance()
+            if distance < 20:
+                obstacle_detected = True
+            else:
+                obstacle_detected = False
+        time.sleep(0.1)
+
+obstacle_thread = threading.Thread(target = check_obstacle)
+obstacle_thread.setDaemon(True)
+obstacle_thread.start()
+
+
+def move():
+    global line_centerx, car_en, obstacle_detected
+
+    while True:
+        if __isRunning:
+            if obstacle_detected:
+                car_stop()
+                car_en = False
             if line_centerx > 0:
-                if abs(line_centerx - img_centerx) < 10:
+                # 偏差比较小，不进行处理
+                if abs(line_centerx-img_centerx) < 10:
                     line_centerx = img_centerx
                 swerve_pid.SetPoint = img_centerx
-                swerve_pid.update(line_centerx)
-                angle = -swerve_pid.output
-
-                car.set_velocity(50, 90, angle)
-                car_en = True
+                swerve_pid.update(line_centerx) 
+                angle = -swerve_pid.output    # 获取PID输出值
+                
+                car.set_velocity(35, 90, angle)
+                car_en = True              
             else:
                 car_stop()
                 car_en = False
         else:
             if car_en:
                 car_stop()
-                car_en = False
+                car_en = False   
             time.sleep(0.01)
-
-
+ 
+# 运行子线程
 th = threading.Thread(target=move)
 th.setDaemon(True)
 th.start()
 
-roi = [
-    (240, 280, 0, 640, 0.1),
-    (340, 380, 0, 640, 0.3),
-    (430, 460, 0, 640, 0.6)
-]
+roi = [ # [ROI, weight]
+        (240, 280,  0, 640, 0.1), 
+        (340, 380,  0, 640, 0.3), 
+        (430, 460,  0, 640, 0.6)
+       ]
 
 roi_h1 = roi[0][0]
 roi_h2 = roi[1][0] - roi[0][0]
@@ -173,105 +219,105 @@ roi_h3 = roi[2][0] - roi[1][0]
 
 roi_h_list = [roi_h1, roi_h2, roi_h3]
 
-
+# 机器人图像处理
 def run(img):
     global line_centerx
-
+    global target_color
+    
     img_copy = img.copy()
     img_h, img_w = img.shape[:2]
-
+    
     if not __isRunning or target_color == ():
         return img
-
+     
     frame_resize = cv2.resize(img_copy, size, interpolation=cv2.INTER_NEAREST)
-    frame_gb = cv2.GaussianBlur(frame_resize, (3, 3), 3)
+    frame_gb = cv2.GaussianBlur(frame_resize, (3, 3), 3)         
     centroid_x_sum = 0
     weight_sum = 0
     center_ = []
     n = 0
 
+    #将图像分割成上中下三个部分，这样处理速度会更快，更精确
     for r in roi:
-        h1, h2, w1, w2, k = r
-        frame_roi = frame_gb[h1:h2, w1:w2]
-        frame_lab = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2LAB)
-        frame_mask = cv2.inRange(frame_lab, lab_data[target_color]['min'], lab_data[target_color]['max'])
-        opened = cv2.morphologyEx(frame_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        roi_h = roi_h_list[n]
+        n += 1       
+        blobs = frame_gb[r[0]:r[1], r[2]:r[3]]
+        frame_lab = cv2.cvtColor(blobs, cv2.COLOR_BGR2LAB)  # 将图像转换到LAB空间
+        area_max = 0
+        areaMaxContour = 0
+        for i in target_color:
+            if i in lab_data:
+                detect_color = i
+                frame_mask = cv2.inRange(frame_lab,
+                                         (lab_data[i]['min'][0],
+                                          lab_data[i]['min'][1],
+                                          lab_data[i]['min'][2]),
+                                         (lab_data[i]['max'][0],
+                                          lab_data[i]['max'][1],
+                                          lab_data[i]['max'][2]))  #对原图像和掩模进行位运算
+                eroded = cv2.erode(frame_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  #腐蚀
+                dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))) #膨胀
 
-        contours = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[-2]
-        areaMaxContour, area_max = getAreaMaxContour(contours)
+        cnts = cv2.findContours(dilated , cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]#找出所有轮廓
+        cnt_large, area = getAreaMaxContour(cnts)#找到最大面积的轮廓
+        if cnt_large is not None:#如果轮廓不为空
+            rect = cv2.minAreaRect(cnt_large)#最小外接矩形
+            box = np.int0(cv2.boxPoints(rect))#最小外接矩形的四个顶点
+            for i in range(4):
+                box[i, 1] = box[i, 1] + (n - 1)*roi_h + roi[0][0]
+                box[i, 1] = int(Misc.map(box[i, 1], 0, size[1], 0, img_h))
+            for i in range(4):                
+                box[i, 0] = int(Misc.map(box[i, 0], 0, size[0], 0, img_w))
 
-        if areaMaxContour is not None:
-            rect = cv2.minAreaRect(areaMaxContour)
-            box = np.int0(cv2.boxPoints(rect))
+            cv2.drawContours(img, [box], -1, (0,0,255,255), 2)#画出四个点组成的矩形
+        
+            #获取矩形的对角点
+            pt1_x, pt1_y = box[0, 0], box[0, 1]
+            pt3_x, pt3_y = box[2, 0], box[2, 1]            
+            center_x, center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2#中心点       
+            cv2.circle(img, (int(center_x), int(center_y)), 5, (0,0,255), -1)#画出中心点         
+            center_.append([center_x, center_y])                        
+            #按权重不同对上中下三个中心点进行求和
+            centroid_x_sum += center_x * r[4]
+            weight_sum += r[4]
+    if weight_sum != 0:
+        #求最终得到的中心点
+        cv2.circle(img, (line_centerx, int(center_y)), 10, (0,255,255), -1)#画出中心点
+        line_centerx = int(centroid_x_sum / weight_sum)  
+    else:
+        line_centerx = -1
 
-            cv2.drawContours(img, [box], -1, range_rgb[target_color], 2)
-
-            M = cv2.moments(areaMaxContour)
-            c_x, c_y = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])
-
-            cv2.circle(img, (c_x, c_y), 3, (0, 255, 0), 2)
-            cv2.putText(img, "centroid", (c_x - 25, c_y - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-            centroid_x_sum += c_x * k
-            weight_sum += k
-
-            center_.append((c_x, c_y))
-
-            n += 1
-
-    if n == 0:
-        return img
-
-    line_centerx = int(centroid_x_sum / weight_sum)
-
-    cv2.circle(img, (line_centerx, img_centerx), 5, (255, 0, 0), -1)
-    cv2.putText(img, "LineCenterX: " + str(line_centerx), (10, img.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
-                (0, 255, 255), 2)
-
+        
     return img
 
 
-def manualcar_stop(signum, frame):
+#关闭前处理
+def manual_stop(signum, frame):
     global __isRunning
-
-    print('Closing...')
+    
+    print('关闭中...')
     __isRunning = False
-    car_stop()
-
+    car_stop()  # 关闭所有电机
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--color", type=str, help="Target color (red, green, blue)")
-    args = parser.parse_args()
-
-    if args.color:
-        color = args.color.lower()
-        if color in range_rgb:
-            init()
-            setTargetColor(color)
-            start()
-
-            camera = Camera.Camera()
-            camera.camera_open(correction=True)
-            signal.signal(signal.SIGINT, manualcar_stop)
-
-            while __isRunning:
-                img = camera.frame
-                if img is not None:
-                    frame = img.copy()
-                    Frame = run(frame)
-                    frame_resize = cv2.resize(Frame, (320, 240))
-                    cv2.imshow('frame', frame_resize)
-                    key = cv2.waitKey(1)
-                    if key == 27:
-                        break
-                else:
-                    time.sleep(0.01)
-
-            camera.camera_close()
-            cv2.destroyAllWindows()
+    init()
+    start()
+    __isRunning = True
+    target_color = ('black',)
+    camera = Camera.Camera()
+    camera.camera_open(correction=True) # 开启畸变矫正,默认不开启
+    signal.signal(signal.SIGINT, manual_stop)
+    while __isRunning:
+        img = camera.frame
+        if img is not None:
+            frame = img.copy()
+            Frame = run(frame)  
+            frame_resize = cv2.resize(Frame, (320, 240))
+            cv2.imshow('frame', frame_resize)
+            key = cv2.waitKey(1)
+            if key == 27:
+                break
         else:
-            print("Invalid color argument! Use 'red', 'green', or 'blue'.")
-    else:
-        print("Please provide a color argument! Use --color <color> (e.g., --color red).")
+            time.sleep(0.01)
+    camera.camera_close()
+    cv2.destroyAllWindows()

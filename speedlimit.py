@@ -14,7 +14,7 @@ if not video_capture.isOpened():
     exit()
 
 # Define the file path for the Haar Cascade classifier for stop signs
-cascade_path = 'stopsign_classifier.xml'  # Replace 'stopsign_classifier.xml' with the actual file path
+cascade_path = 'speedlimit.xml'  # Replace 'stopsign_classifier.xml' with the actual file path
 # Define the real-world dimensions of the stop sign (in meters)
 stop_sign_width = 0.45  # Width of the stop sign in meters (e.g., 45 cm)
 stop_sign_height = 0.45  # Height of the stop sign in meters (e.g., 45 cm)

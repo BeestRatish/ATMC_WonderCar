@@ -1,14 +1,29 @@
 import sys
+
 sys.path.append('/home/pi/TurboPi/')
 import cv2
 import time
 import signal
 import HiwonderSDK.mecanum as mecanum
 
-if sys.version_info.major == 2:
-    print('Please run this program with python3!')
-    sys.exit(0)
+# Define the file path for the Haar Cascade classifier
+cascade_path = 'stopsign_classifier.xml'  # Replace 'stopsign_classifier.xml' with the actual file path
 
+# Define the real-world dimensions of the stop sign (in meters)
+stop_sign_width = 0.45  # Width of the stop sign in meters (e.g., 45 cm)
+stop_sign_height = 0.45  # Height of the stop sign in meters (e.g., 45 cm)
+# Define the focal length of the camera (in pixels) and the actual distance from the camera to the stop sign (in meters)
+focal_length = 1000  # Focal length of the camera in pixels (adjust based on your camera)
+
+# Initialize the camera with the specified resolution
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+
+# Load the pre-trained Haar Cascade classifier for stop signs
+stop_cascade = cv2.CascadeClassifier(cascade_path)
+
+# Initialize the Mecanum chassis
 chassis = mecanum.MecanumChassis()
 
 start = True
@@ -22,39 +37,49 @@ def Stop(signum, frame):
 
 signal.signal(signal.SIGINT, Stop)
 
-# Placeholder function for AI vision model (replace with actual implementation)
-def ai_vision(frame):
-    # Placeholder for distance estimation
-    return 0.15  # Simulated distance of 15 cm
+# Function for object detection and distance estimation
+def process_frame(frame):
+    # Convert the frame to grayscale for detection
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Detect stop signs in the frame
+    stop_signs = stop_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    for (x, y, w, h) in stop_signs:
+        # Draw rectangles around the detected stop signs
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+
+        # Calculate the distance based on the size of the stop sign in the image
+        stop_sign_width_px = w  # Width of the stop sign in pixels
+
+        # Estimate distance using the pinhole camera model (assuming focal length is known)
+        estimated_distance = (stop_sign_width * focal_length) / stop_sign_width_px
+
+        # Display the estimated distance on the frame
+        cv2.putText(frame, f'Distance: {estimated_distance:.2f} meters', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+    # Display the frame with detected stop signs and distance estimation
+    cv2.imshow('Stop Signs Detected', frame)
 
 if __name__ == '__main__':
     while start:
-        chassis.set_velocity(50, 90, 0)  # Move forward at linear velocity 50, direction angle 90
+        chassis.set_velocity(50, 90, 0)  # Move forward with specified parameters
         time.sleep(1)
 
-        # Capture a frame from the camera
-        _, frame = cap.read()
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-        # Convert the frame to grayscale for processing
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Process frames using the process_frame function
+        process_frame(frame)
 
-        # Detect stop signs in the frame
-        stop_signs = stop_sign_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
-        for (x, y, w, h) in stop_signs:
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-            # Calculate distance to stop sign and check if it's within 15 cm
-            distance = ai_vision(frame)
-            if distance <= 0.15:
-                # Stop the car for 3 seconds
-                chassis.set_velocity(0, 0, 0)
-                time.sleep(3)
-                chassis.set_velocity(50, 90, 0)  # Resume movement after 3 seconds
-
-        cv2.imshow('Car Detection', frame)
-
+        # Exit the loop if 'q' is pressed
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-    chassis.set_velocity(0, 0, 0)  # Turn off all motors
+    # Turn off motors and close the program
+    chassis.set_velocity(0, 0, 0)
+    cap.release()
+    cv2.destroyAllWindows()
     print('Closed')

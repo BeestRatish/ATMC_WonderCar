@@ -10,12 +10,13 @@ focal_length = 1000  # Focal length of the camera in pixels (adjust based on you
 actual_distance = 1.5  # Actual distance from the camera to the stop sign in meters
 
 # Set the camera resolution
-resolution = (640, 480)
+resolution = (320,240)
 
 # Initialize the camera with the specified resolution
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+cap.set(cv2.CAP_PROP_XI_FRAMERATE, 30)
 
 # Load the pre-trained Haar Cascade classifier for stop signs
 stop_cascade = cv2.CascadeClassifier(cascade_path)
