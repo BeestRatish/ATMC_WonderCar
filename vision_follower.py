@@ -146,7 +146,7 @@ car_en = False
 
 
 def move():
-    global line_centerx, car_en
+    global line_centerx, car_en, stop_detected
 
     while True:
         if __isRunning:
@@ -158,6 +158,14 @@ def move():
                 angle = -swerve_pid.output
                 car.set_velocity(50, 90, angle)
                 car_en = True
+
+
+                #check if a stop sign is detected
+                if stop_detected:
+                    car_stop()
+                    while stop_detected:
+                        time.sleep(0.1)
+                    car_run()
         else:
             if car_en:
                 car_en = False
@@ -255,6 +263,7 @@ def run(img):
     if len(stop_signs) > 0:
         # Stop the car when a stop sign is detected
         car_stop()
+        time.sleep(1)
     else:
         # Resume running if no stop sign is detected
         car_run()
