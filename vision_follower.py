@@ -254,13 +254,28 @@ def run(img):
 
     if len(stop_signs) > 0:
         # Stop the car when a stop sign is detected
-        __isRunning = False
         car_stop()
     else:
         # Resume running if no stop sign is detected
-        __isRunning = True
+        car_run()
 
     return img
+
+
+# Function to stop the car
+def car_stop():
+    global __isRunning
+    __isRunning = False
+    car.set_velocity(0, 90, 0)  # Stop all motors
+
+
+# Function to resume running the car
+def car_run():
+    global __isRunning
+    __isRunning = True
+    # Add code here to set appropriate velocity for car movement
+    # For example:
+    # car.set_velocity(50, 90, angle)
 
 
 # Stop the car and print closing message
