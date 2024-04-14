@@ -19,6 +19,7 @@ import HiwonderSDK.mecanum as mecanum
 
 # Load the stop sign HAAR cascade classifier
 stop_cascade = cv2.CascadeClassifier('stopsign_classifier.xml')
+speedlimit_cascade = cv2.CascadeClassifier('speedlimit.xml')
 
 # Global variables
 servo1 = 1500
@@ -58,6 +59,14 @@ def initMove():
     Board.setPWMServoPulse(1, servo1, 1000)
     Board.setPWMServoPulse(2, servo2, 1000)
 
+def adjust_velocity(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    speedlimit_signs = speedlimit_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    if len(speedlimit_signs) > 0:
+        car.set_velocity(50,90,0)
+    else:
+        car_run()
 
 # Reset variables
 def reset():
@@ -156,7 +165,7 @@ def move():
                 swerve_pid.SetPoint = img_centerx
                 swerve_pid.update(line_centerx)
                 angle = -swerve_pid.output
-                car.set_velocity(50, 90, angle)
+                car.set_velocity(30, 90, angle)
                 car_en = True
 
 
@@ -267,6 +276,8 @@ def run(img):
     else:
         # Resume running if no stop sign is detected
         car_run()
+
+    adjust_velocity(img)
 
     return img
 
