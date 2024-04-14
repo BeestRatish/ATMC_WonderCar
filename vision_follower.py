@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # coding=utf8
 import sys
+
 sys.path.append('/home/pi/TurboPi/')
 import cv2
 import time
@@ -15,18 +16,15 @@ import HiwonderSDK.PID as PID
 import HiwonderSDK.Misc as Misc
 import HiwonderSDK.Board as Board
 import HiwonderSDK.mecanum as mecanum
-import HiwonderSDK.Sonar as Sonar
-
-HWSONAR = Sonar.Sonar()
-
-obstacle_detected = False
 
 # 视觉巡线 Line Following
+
+# loading stop sign Haar Cascade Classifier for stop signs
+stop_sign_load = cv2.CascadeClassifier('stopsign_classifier.xml')
 
 if sys.version_info.major == 2:
     print('Please run this program with python3!')
     sys.exit(0)
-
 
 servo1 = 1500
 servo2 = 1500
@@ -49,17 +47,21 @@ range_rgb = {
 
 lab_data = None
 servo_data = None
+
+
 def load_config():
     global lab_data, servo_data
 
     lab_data = yaml_handle.get_yaml_data(yaml_handle.lab_file_path)
     servo_data = yaml_handle.get_yaml_data(yaml_handle.servo_file_path)
 
+
 # 初始位置  Initial Position
 def initMove():
     car_stop()
     Board.setPWMServoPulse(1, servo1, 1000)
     Board.setPWMServoPulse(2, servo2, 1000)
+
 
 # 变量重置 Reset Variables
 def reset():
@@ -69,8 +71,9 @@ def reset():
 
     line_centerx = -1
     target_color = ()
-    servo1 = servo_data['servo1']+350
+    servo1 = servo_data['servo1'] + 350
     servo2 = servo_data['servo2']
+
 
 # app初始化调用 APP Initialization
 def init():
@@ -79,12 +82,14 @@ def init():
     reset()
     initMove()
 
+
 # app开始玩法调用  App starts calling program
 def start():
     global __isRunning
     reset()
     __isRunning = True
     print("VisualPatrol Start")
+
 
 # app停止玩法调用 App stops calling program
 def stop():
@@ -93,12 +98,26 @@ def stop():
     car_stop()
     print("VisualPatrol Stop")
 
+
+# Function to detect stop signs and stop the car
+def detect_stop_sign(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    stop_signs = stop_sign_load.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    for (x, y, w, h) in stop_signs:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        car_stop()  # Stop the car when a stop sign is detected
+
+    return frame
+
+
 # app退出玩法调用 Exit the game
 def exit():
     global __isRunning
     __isRunning = False
     car_stop()
     print("VisualPatrol Exit")
+
 
 # 设置检测颜色 Set target color
 def setTargetColor(color):
@@ -108,15 +127,18 @@ def setTargetColor(color):
     target_color = color
     return (True, ())
 
+
 def setBuzzer(timer):
     Board.setBuzzer(0)
     Board.setBuzzer(1)
     time.sleep(timer)
     Board.setBuzzer(0)
 
+
 # 关闭电机 Turn off motors
 def car_stop():
-    car.set_velocity(0,90,0)  # 关闭所有电机 Turn off all motors
+    car.set_velocity(0, 90, 0)  # 关闭所有电机 Turn off all motors
+
 
 # 找出面积最大的轮廓 Find the maximum contour
 # 参数为要比较的轮廓的列表 Parameters are the list of contours to be compared
@@ -134,8 +156,11 @@ def getAreaMaxContour(contours):
 
     return area_max_contour, contour_area_max  # 返回最大的轮廓 Return the maximum contour
 
+
 # 机器人移动逻辑处理 Movement Processing
 car_en = False
+
+
 def move():
     global line_centerx, car_en
 
@@ -143,11 +168,11 @@ def move():
         if __isRunning:
             if line_centerx > 0:
                 # 偏差比较小，不进行处理 If the deviation is relatively small, do not need to process
-                if abs(line_centerx-img_centerx) < 10:
+                if abs(line_centerx - img_centerx) < 10:
                     line_centerx = img_centerx
                 swerve_pid.SetPoint = img_centerx
                 swerve_pid.update(line_centerx)
-                angle = -swerve_pid.output    # 获取PID输出值 Access PID output
+                angle = -swerve_pid.output  # 获取PID输出值 Access PID output
 
                 car.set_velocity(50, 90, angle)
                 car_en = True
@@ -157,16 +182,17 @@ def move():
                 car_stop()
             time.sleep(0.01)
 
+
 # 运行子线程  Run child thread
 th = threading.Thread(target=move)
 th.setDaemon(True)
 th.start()
 
-roi = [ # [ROI, weight]
-        (240, 280,  0, 640, 0.1),
-        (340, 380,  0, 640, 0.3),
-        (430, 460,  0, 640, 0.6)
-       ]
+roi = [  # [ROI, weight]
+    (240, 280, 0, 640, 0.1),
+    (340, 380, 0, 640, 0.3),
+    (430, 460, 0, 640, 0.6)
+]
 
 roi_h1 = roi[0][0]
 roi_h2 = roi[1][0] - roi[0][0]
@@ -174,11 +200,11 @@ roi_h3 = roi[2][0] - roi[1][0]
 
 roi_h_list = [roi_h1, roi_h2, roi_h3]
 
-# 机器人图像处理 Image processing
+
+# 机器人图像处理 mage processing
 def run(img):
     global line_centerx
     global target_color
-    global obstacle_detected
 
     img_copy = img.copy()
     img_h, img_w = img.shape[:2]
@@ -238,30 +264,16 @@ def run(img):
             # 按权重不同对上中下三个中心点进行求和  Sum up the upper, middle and lower center points according to different weights
             centroid_x_sum += center_x * r[4]
             weight_sum += r[4]
-
-            # Print "Object Detected" when an object is detected
-            if obstacle_detected:
-                cv2.putText(img, "Object Detected", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
     if weight_sum != 0:
         # 求最终得到的中心点  Get the final center point
         cv2.circle(img, (line_centerx, int(center_y)), 10, (0, 255, 255), -1)  # 画出中心点 Draw the center point
         line_centerx = int(centroid_x_sum / weight_sum)
     else:
         line_centerx = -1
-
-    # Ultrasonic obstacle detection
-    global obstacle_detected
-    if HWSONAR.get_distance() < 20:  # If obstacle detected within 20cm
-        obstacle_detected = True
-    else:
-        obstacle_detected = False
-
     return img
 
 
-
-#关闭前处理  Processing before exit
+# 关闭前处理  Processing before exit
 def manual_stop(signum, frame):
     global __isRunning
 
@@ -270,26 +282,27 @@ def manual_stop(signum, frame):
     car_stop()  # 关闭所有电机  Turn off all motors
 
 
-
 if __name__ == '__main__':
     init()
     start()
     __isRunning = True
     target_color = ('black',)
     camera = Camera.Camera()
-    camera.camera_open(correction=True) # 开启畸变矫正,默认不开启 Enable distortion correction which is not enabled by default
+    camera.camera_open(correction=True)  # 开启畸变矫正,默认不开启 Enable distortion correction which is not enabled by default
     signal.signal(signal.SIGINT, manual_stop)
+
     while __isRunning:
         img = camera.frame
         if img is not None:
             frame = img.copy()
-            Frame = run(frame)
-            frame_resize = cv2.resize(Frame, (320, 240))
+            frame_with_stop_signs = detect_stop_sign(frame)
+            frame_resize = cv2.resize(frame_with_stop_signs, (320, 240))
             cv2.imshow('frame', frame_resize)
             key = cv2.waitKey(1)
             if key == 27:
                 break
         else:
             time.sleep(0.01)
+
     camera.camera_close()
     cv2.destroyAllWindows()
