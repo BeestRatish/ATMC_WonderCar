@@ -182,11 +182,11 @@ roi_h3 = roi[2][0] - roi[1][0]
 
 roi_h_list = [roi_h1, roi_h2, roi_h3]
 
-
-# Image processing
+#image processing
 def run(img):
     global line_centerx
     global target_color
+    global __isRunning
 
     img_copy = img.copy()
     img_h, img_w = img.shape[:2]
@@ -252,10 +252,13 @@ def run(img):
     gray = cv2.cvtColor(frame_resize, cv2.COLOR_BGR2GRAY)
     stop_signs = stop_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-    for (x, y, w, h) in stop_signs:
-        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+    if len(stop_signs) > 0:
         # Stop the car when a stop sign is detected
-        stop()
+        __isRunning = False
+        car_stop()
+    else:
+        # Resume running if no stop sign is detected
+        __isRunning = True
 
     return img
 
