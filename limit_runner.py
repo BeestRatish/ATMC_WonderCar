@@ -43,19 +43,16 @@ range_rgb = {
 lab_data = None
 servo_data = None
 
-
 def load_config():
     global lab_data, servo_data
 
     lab_data = yaml_handle.get_yaml_data(yaml_handle.lab_file_path)
     servo_data = yaml_handle.get_yaml_data(yaml_handle.servo_file_path)
 
-
 def initMove():
     car_stop()
     Board.setPWMServoPulse(1, servo1, 1000)
     Board.setPWMServoPulse(2, servo2, 1000)
-
 
 def reset():
     global line_centerx
@@ -67,13 +64,11 @@ def reset():
     servo1 = servo_data['servo1'] + 350
     servo2 = servo_data['servo2']
 
-
 def init():
     print("VisualPatrol Init")
     load_config()
     reset()
     initMove()
-
 
 def start():
     global __isRunning
@@ -81,20 +76,17 @@ def start():
     __isRunning = True
     print("VisualPatrol Start")
 
-
 def stop():
     global __isRunning
     __isRunning = False
     car_stop()
     print("VisualPatrol Stop")
 
-
 def exit():
     global __isRunning
     __isRunning = False
     car_stop()
     print("VisualPatrol Exit")
-
 
 def setTargetColor(color):
     global target_color
@@ -103,20 +95,31 @@ def setTargetColor(color):
     target_color = color
     return (True, ())
 
-
 def setBuzzer(timer):
     Board.setBuzzer(0)
     Board.setBuzzer(1)
     time.sleep(timer)
     Board.setBuzzer(0)
 
-
 def car_stop():
     car.set_velocity(0, 90, 0)
 
+# Find the maximum contour
+def getAreaMaxContour(contours):
+    contour_area_temp = 0
+    contour_area_max = 0
+    area_max_contour = None
+
+    for c in contours:
+        contour_area_temp = math.fabs(cv2.contourArea(c))
+        if contour_area_temp > contour_area_max:
+            contour_area_max = contour_area_temp
+            if contour_area_temp >= 5:
+                area_max_contour = c
+
+    return area_max_contour, contour_area_max
 
 car_en = False
-
 
 def move():
     global line_centerx, car_en
@@ -130,14 +133,13 @@ def move():
                 swerve_pid.update(line_centerx)
                 angle = -swerve_pid.output
 
-                car.set_velocity(50, 90, angle)
+                car.set_velocity(10, 90, angle)
                 car_en = True
         else:
             if car_en:
                 car_en = False
                 car_stop()
             time.sleep(0.01)
-
 
 th = threading.Thread(target=move)
 th.setDaemon(True)
@@ -154,7 +156,6 @@ roi_h2 = roi[1][0] - roi[0][0]
 roi_h3 = roi[2][0] - roi[1][0]
 
 roi_h_list = [roi_h1, roi_h2, roi_h3]
-
 
 def run(img):
     global line_centerx
@@ -218,8 +219,14 @@ def run(img):
         line_centerx = int(centroid_x_sum / weight_sum)
     else:
         line_centerx = -1
-    return img
 
+    # Detect speed limit sign
+    gray = cv2.cvtColor(img_copy, cv2.COLOR_BGR2GRAY)
+    speedlimit_signs = speedlimit_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    if len(speedlimit_signs) > 0:
+        car.set_velocity(50, 90, 0)  # Set velocity to 50 when speed limit sign is detected
+
+    return img
 
 def manual_stop(signum, frame):
     global __isRunning
@@ -228,7 +235,6 @@ def manual_stop(signum, frame):
     __isRunning = False
     car_stop()
 
-
 if __name__ == '__main__':
     init()
     start()
@@ -236,7 +242,7 @@ if __name__ == '__main__':
     target_color = ('black',)
 
     # Load the speed limit sign HAAR cascade classifier
-    speedlimit_cascade = cv2.CascadeClassifier('speedlimit_classifier.xml')
+    speedlimit_cascade = cv2.CascadeClassifier('speedlimit.xml')
 
     camera = Camera.Camera()
     camera.camera_open(correction=True)
@@ -246,19 +252,12 @@ if __name__ == '__main__':
         img = camera.frame
         if img is not None:
             frame = img.copy()
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            speedlimit_signs = speedlimit_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5,
-                                                                   minSize=(30, 30))
-
-            if len(speedlimit_signs) > 0:
-                car.set_velocity(50, 90, 0)  # Set velocity to 50 when speed limit sign is detected
-            else:
-                Frame = run(frame)
-                frame_resize = cv2.resize(Frame, (320, 240))
-                cv2.imshow('frame', frame_resize)
-                key = cv2.waitKey(1)
-                if key == 27:
-                    break
+            Frame = run(frame)
+            frame_resize = cv2.resize(Frame, (320, 240))
+            cv2.imshow('frame', frame_resize)
+            key = cv2.waitKey(1)
+            if key == 27:
+                break
         else:
             time.sleep(0.01)
 
