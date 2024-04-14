@@ -201,6 +201,7 @@ def run(img):
     center_ = []
     n = 0
 
+    # Lane detection (black line following)
     for r in roi:
         roi_h = roi_h_list[n]
         n += 1
@@ -246,6 +247,16 @@ def run(img):
         line_centerx = int(centroid_x_sum / weight_sum)
     else:
         line_centerx = -1
+
+    # Stop sign detection
+    gray = cv2.cvtColor(frame_resize, cv2.COLOR_BGR2GRAY)
+    stop_signs = stop_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    for (x, y, w, h) in stop_signs:
+        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        # Stop the car when a stop sign is detected
+        stop()
+
     return img
 
 
