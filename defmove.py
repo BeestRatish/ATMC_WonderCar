@@ -28,16 +28,19 @@ def move():
                 elif sensor_data[0] and not sensor_data[1] and not sensor_data[2] and not sensor_data[3]:
                     car.set_velocity(35, 90, -0.3)  # Big left turn
 
-                # Stop if all sensors detect a line, detect a cross line, or the robot is picked up
+                # Slow down if a cross line is detected
                 elif sensor_data[0] and sensor_data[1] and sensor_data[2] and sensor_data[3]:
                     if not car_stop:
-                        car.set_velocity(0, 90, 0)  # Stop the robot
+                        # Slow down the car gradually
+                        for vel in range(35, 5, -1):
+                            car.set_velocity(vel, 90, 0)
+                            time.sleep(0.1)
                         car_stop = True
-                        stop_timer = 3
+                        stop_timer = 0.5
 
                     if stop_timer > 0:
                         stop_timer -= 0.01
-                    else:
+                    elif car_stop:
                         car_stop = False
                         car.set_velocity(35, 90, 0)
 
