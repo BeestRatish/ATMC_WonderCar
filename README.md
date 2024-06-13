@@ -1,2 +1,6 @@
 # ATMC_WonderCar
 making raspberryPi based car autonomous driving using Vision, LineFollowe Sensor and Obstacle Sensor. 
+
+The project aims to design and implement an autonomous self-driving RC car capable of navigating through a simulated community environment to locate its charging station. The objective is to enhance the autonomous capabilities of the RC car, simulating real-life scenarios, and identifying both improvements and flaws in the process. The primary challenge is programming and training the car to detect and follow lanes, recognize traffic signs, and respond to obstacles like pedestrians. 
+
+The autonomous car’s design involves a comprehensive system where various components are integrated. The project’s design approach involves utilising two batteries to power the DC motor. The Raspberry pi serves as the brain of the car, interfacing the PWM controller and connecting to various peripherals, including a camera for vision-based tasks and an ultrasonic sensor for obstacle detection. The system employs computer vision libraries like OpenCV for image processing. This involves the training of the car model using computer vision libraries, with OpenCV. This design aims to create a reliable communication system, ensuring efficient data transfer between the Raspberry Pi and connected components for optimal performance.
